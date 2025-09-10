@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>レーシングゲーム</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        .game-container {
+            position: relative;
+            width: 400px;
+            height: 600px;
+            background: linear-gradient(to bottom, #87CEEB, #98FB98);
+            border: 3px solid #333;
+            overflow: hidden;
+        }
+
+        .road {
+            position: absolute;
+            width: 300px;
+            height: 100%;
+            left: 50px;
+            background: #333;
+            background-image: 
+                linear-gradient(to bottom, transparent 48%, #fff 48%, #fff 52%, transparent 52%);
+            background-size: 100% 60px;
+            animation: roadMove 0.5s linear infinite;
+        }
+
+        @keyframes roadMove {
+            0% { background-position: 0 0; }
+            100% { background-position: 0 60px; }
+        }
+
+        .car {
+            position: absolute;
+            width: 40px;
+            height: 60px;
+            background: #ff0000;
+            border: 2px solid #000;
+            border-radius: 5px;
+            z-index: 10;
+        }
+
+        .player-car {
+            bottom: 50px;
+            left: 180px;
+        }
+
+        .enemy-car {
+            background: #0066ff;
+            top: -60px;
+        }
+
+        .ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            z-index: 20;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 30;
+            display: none;
+        }
+
+        .start-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 30;
+        }
+
+        button {
+            background: #ff6600;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #e55500;
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: white;
+            font-size: 14px;
+            z-index: 20;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container" id="gameContainer">
+        <div class="road"></div>
+        
+        <div class="ui">
+            <div>スコア: <span id="score">0</span></div>
+            <div>スピード: <span id="speed">1</span></div>
+        </div>
+
+        <div class="instructions">
+            ←→ キーで移動
+        </div>
+
+        <div class="car player-car" id="playerCar"></div>
+
+        <div class="start-screen" id="startScreen">
+            <h2>レーシングゲーム</h2>
+            <p>矢印キーで車を操作して<br>他の車を避けよう！</p>
+            <button onclick="startGame()">ゲーム開始</button>
+        </div>
+
+        <div class="game-over" id="gameOver">
+            <h2>ゲームオーバー</h2>
+            <p>最終スコア: <span id="finalScore">0</span></p>
+            <button onclick="restartGame()">もう一度プレイ</button>
+        </div>
+    </div>
+
+    <script>
+        let gameState = {
+            isPlaying: false,
+            score: 0,
+            speed: 1,
+            playerPosition: 180,
+            enemies: [],
+            gameSpeed: 50
+        };
+
+        const gameContainer = document.getElementById('gameContainer');
+        const playerCar = document.getElementById('playerCar');
+        const scoreElement = document.getElementById('score');
+        const speedElement = document.getElementById('speed');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOver');
+        const finalScoreElement = document.getElementById('finalScore');
+
+        let gameLoop;
+        let enemySpawnTimer = 0;
+
+        function startGame() {
+            gameState.isPlaying = true;
+            gameState.score = 0;
+            gameState.speed = 1;
+            gameState.playerPosition = 180;
+            gameState.enemies = [];
+            gameState.gameSpeed = 50;
+
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+
+            updateUI();
+            gameLoop = setInterval(updateGame, gameState.gameSpeed);
+        }
+
+        function updateGame() {
+            if (!gameState.isPlaying) return;
+
+            moveEnemies();
+            spawnEnemies();
+            checkCollisions();
+            updateScore();
+            updateUI();
+        }
+
+        function moveEnemies() {
+            gameState.enemies.forEach((enemy, index) => {
+                enemy.y += gameState.speed * 5;
+                enemy.element.style.top = enemy.y + 'px';
+
+                if (enemy.y > 600) {
+                    gameContainer.removeChild(enemy.element);
+                    gameState.enemies.splice(index, 1);
+                }
+            });
+        }
+
+        function spawnEnemies() {
+            enemySpawnTimer++;
+            if (enemySpawnTimer > 60 - gameState.speed * 5) {
+                enemySpawnTimer = 0;
+                createEnemy();
+            }
+        }
+
+        function createEnemy() {
+            const enemy = document.createElement('div');
+            enemy.className = 'car enemy-car';
+            
+            const lanes = [70, 130, 190, 250, 310];
+            const randomLane = lanes[Math.floor(Math.random() * lanes.length)];
+            
+            enemy.style.left = randomLane + 'px';
+            enemy.style.top = '-60px';
+            
+            gameContainer.appendChild(enemy);
+            
+            gameState.enemies.push({
+                element: enemy,
+                x: randomLane,
+                y: -60
+            });
+        }
+
+        function checkCollisions() {
+            const playerRect = {
+                x: gameState.playerPosition,
+                y: 540,
+                width: 40,
+                height: 60
+            };
+
+            gameState.enemies.forEach(enemy => {
+                const enemyRect = {
+                    x: enemy.x,
+                    y: enemy.y,
+                    width: 40,
+                    height: 60
+                };
+
+                if (isColliding(playerRect, enemyRect)) {
+                    gameOver();
+                }
+            });
+        }
+
+        function isColliding(rect1, rect2) {
+            return rect1.x < rect2.x + rect2.width &&
+                   rect1.x + rect1.width > rect2.x &&
+                   rect1.y < rect2.y + rect2.height &&
+                   rect1.y + rect1.height > rect2.y;
+        }
+
+        function updateScore() {
+            gameState.score += gameState.speed;
+            if (gameState.score % 1000 === 0) {
+                gameState.speed = Math.min(gameState.speed + 1, 10);
+                gameState.gameSpeed = Math.max(gameState.gameSpeed - 5, 20);
+                clearInterval(gameLoop);
+                gameLoop = setInterval(updateGame, gameState.gameSpeed);
+            }
+        }
+
+        function updateUI() {
+            scoreElement.textContent = gameState.score;
+            speedElement.textContent = gameState.speed;
+        }
+
+        function gameOver() {
+            gameState.isPlaying = false;
+            clearInterval(gameLoop);
+            finalScoreElement.textContent = gameState.score;
+            gameOverScreen.style.display = 'block';
+            
+            gameState.enemies.forEach(enemy => {
+                if (enemy.element.parentNode) {
+                    gameContainer.removeChild(enemy.element);
+                }
+            });
+            gameState.enemies = [];
+        }
+
+        function restartGame() {
+            startGame();
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (!gameState.isPlaying) return;
+
+            switch(event.key) {
+                case 'ArrowLeft':
+                    if (gameState.playerPosition > 70) {
+                        gameState.playerPosition -= 60;
+                        playerCar.style.left = gameState.playerPosition + 'px';
+                    }
+                    break;
+                case 'ArrowRight':
+                    if (gameState.playerPosition < 310) {
+                        gameState.playerPosition += 60;
+                        playerCar.style.left = gameState.playerPosition + 'px';
+                    }
+                    break;
+            }
+        });
+
+        document.addEventListener('keyup', (event) => {
+            event.preventDefault();
+        });
+    </script>
+</body>
+</html>
